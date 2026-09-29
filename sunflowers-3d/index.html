@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+<title>SUNFLOWERS — 走进梵高的世界</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #1c1408; font-family: Georgia, serif; cursor: crosshair; }
+#app { width: 100vw; height: 100vh; }
+canvas { display: block; }
+.title { position: fixed; top: 28px; left: 32px; color: rgba(255, 214, 90, 0.88); pointer-events: none; z-index: 10; text-shadow: 0 2px 20px rgba(0,0,0,0.7); }
+.title h1 { font-size: 26px; font-weight: normal; letter-spacing: 8px; margin-bottom: 6px; }
+.title p { font-size: 11px; letter-spacing: 3px; color: rgba(255, 214, 90, 0.5); font-style: italic; }
+.controls { position: fixed; bottom: 28px; left: 32px; color: rgba(255, 214, 90, 0.5); font-size: 11px; letter-spacing: 2px; pointer-events: none; z-index: 10; line-height: 2; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+.controls kbd { display: inline-block; padding: 2px 8px; margin: 0 2px; border: 1px solid rgba(255, 214, 90, 0.3); border-radius: 3px; background: rgba(255, 214, 90, 0.08); font-family: monospace; font-size: 10px; }
+#startOverlay { position: fixed; inset: 0; background: rgba(28, 20, 8, 0.94); display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 100; cursor: pointer; transition: opacity 1.2s ease; }
+#startOverlay.hide { opacity: 0; pointer-events: none; }
+#startOverlay h2 { color: rgba(255, 214, 90, 0.95); font-size: 34px; font-weight: normal; letter-spacing: 14px; margin-bottom: 16px; }
+#startOverlay p { color: rgba(255, 214, 90, 0.5); font-size: 13px; letter-spacing: 3px; font-style: italic; }
+#startOverlay .enter { margin-top: 40px; padding: 12px 40px; border: 1px solid rgba(255, 214, 90, 0.45); color: rgba(255, 214, 90, 0.75); font-size: 12px; letter-spacing: 4px; text-transform: uppercase; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+#crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 4px; height: 4px; border-radius: 50%; background: rgba(255, 214, 90, 0.45); pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.5s; }
+#crosshair.show { opacity: 1; }
+#qualityToggle { position: fixed; top: 28px; right: 32px; z-index: 110; padding: 8px 16px; border: 1px solid rgba(255, 214, 90, 0.35); background: rgba(28, 20, 8, 0.7); color: rgba(255, 214, 90, 0.75); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-family: Georgia, serif; backdrop-filter: blur(10px); border-radius: 2px; transition: all 0.3s; }
+#qualityToggle:hover { background: rgba(255, 214, 90, 0.16); color: rgba(255, 230, 140, 0.95); }
+#fpsCounter { position: fixed; top: 70px; right: 32px; z-index: 110; color: rgba(255, 214, 90, 0.4); font-size: 11px; font-family: monospace; letter-spacing: 1px; pointer-events: none; }
+#backGallery { position: fixed; top: 88px; left: 32px; z-index: 110; padding: 8px 16px; border: 1px solid rgba(255, 214, 90, 0.35); background: rgba(28, 20, 8, 0.7); color: rgba(255, 214, 90, 0.75); font-size: 11px; letter-spacing: 2px; text-decoration: none; font-family: Georgia, serif; backdrop-filter: blur(10px); border-radius: 2px; transition: all 0.3s; }
+#backGallery:hover { background: rgba(255, 214, 90, 0.18); color: rgba(255, 214, 90, 0.95); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="crosshair"></div>
+<div class="title"><h1>SUNFLOWERS</h1><p>Vincent van Gogh &middot; 1888</p></div>
+<button id="qualityToggle">画质：高</button>
+<a id="backGallery" href="/">返回画廊</a>
+<div id="fpsCounter">-- FPS</div>
+<div class="controls">
+<div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动</div>
+<div><kbd>鼠标</kbd> 环顾四周</div>
+<div><kbd>Esc</kbd> 退出视角</div>
+</div>
+<div id="startOverlay"><h2>SUNFLOWERS</h2><p>The sunflower is mine in a way</p><div class="enter">点击进入</div></div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const QUALITY = {
+  high: { pixelRatio: Math.min(window.devicePixelRatio, 2), particles: 2400, bloomStrength: 0.55, bloomRadius: 0.45, bloomThreshold: 0.62, wallSeg: 48, petalExtra: 1, skyFbmLayers: 5, filmGrain: 0.05 },
+  low: { pixelRatio: 1, particles: 800, bloomStrength: 0.28, bloomRadius: 0.3, bloomThreshold: 0.75, wallSeg: 20, petalExtra: 0, skyFbmLayers: 3, filmGrain: 0.03 },
+};
+const QUALITY_STORAGE_KEY = 'sunflowerQuality';
+// 刷新后从本地存储恢复画质
+let currentQuality = localStorage.getItem(QUALITY_STORAGE_KEY) === 'low' ? 'low' : 'high';
+let q = QUALITY[currentQuality];
+
+const container = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0xc4a035, 10, 26);
+
+const camera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 1.6, 4.8);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(q.pixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x3d2a08, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+function rand(seed) {
+  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+function createCanvasTexture(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+// 厚涂笔触墙面
+const wallVShader = `
+varying vec3 vWorldPos;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+const wallFShader = `
+uniform float uTime;
+uniform int uFbmLayers;
+uniform float uGlow;
+varying vec3 vWorldPos;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0; float a = 0.5;
+  for (int i = 0; i < 6; i++) { if (i >= uFbmLayers) break;
+    v += a * noise(p); p *= 2.12; a *= 0.5;
+  }
+  return v;
+}
+void main() {
+  float t = uTime * 0.018;
+  vec2 uv = vec2(vWorldPos.x * 0.22 + vWorldPos.z * 0.18, vWorldPos.y * 0.55 + t);
+  float n = fbm(uv);
+  float n2 = fbm(uv * 1.7 + vec2(t * 0.4, -t * 0.2));
+  vec3 c1 = vec3(0.92, 0.72, 0.18);
+  vec3 c2 = vec3(0.98, 0.86, 0.32);
+  vec3 c3 = vec3(0.78, 0.52, 0.10);
+  vec3 c4 = vec3(0.62, 0.42, 0.08);
+  vec3 col = mix(c3, c1, smoothstep(0.28, 0.58, n));
+  col = mix(col, c2, smoothstep(0.58, 0.82, n2));
+  col = mix(col, c4, smoothstep(0.0, 0.22, n) * 0.45);
+  float stroke = sin(vWorldPos.y * 28.0 + n * 10.0) * 0.5 + 0.5;
+  col *= 0.90 + 0.10 * stroke;
+  col += uGlow * vec3(0.18, 0.10, 0.02);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const wallMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: { uTime: { value: 0 }, uFbmLayers: { value: q.skyFbmLayers }, uGlow: { value: 0 } },
+  vertexShader: wallVShader,
+  fragmentShader: wallFShader,
+});
+const room = new THREE.Mesh(new THREE.BoxGeometry(14, 4.4, 12, q.wallSeg, 8, q.wallSeg), wallMat);
+room.position.y = 2.15;
+scene.add(room);
+
+// 木地板
+const floorTex = createCanvasTexture(512, 512, (ctx, w, h) => {
+  ctx.fillStyle = '#6b4a18';
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 18; i++) {
+    const x = (i / 18) * w;
+    ctx.fillStyle = i % 2 === 0 ? '#7a5520' : '#5c3f12';
+    ctx.fillRect(x, 0, w / 18 + 1, h);
+    ctx.strokeStyle = 'rgba(40, 22, 6, 0.45)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  for (let i = 0; i < 80; i++) {
+    ctx.strokeStyle = 'rgba(30, 16, 4, ' + (0.08 + Math.random() * 0.15) + ')';
+    ctx.lineWidth = 0.6 + Math.random();
+    const x = Math.random() * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    for (let y = 0; y < h; y += 12) ctx.lineTo(x + Math.sin(y * 0.04 + i) * 2, y);
+    ctx.stroke();
+  }
+});
+floorTex.repeat.set(6, 6);
+const floor = new THREE.Mesh(
+  new THREE.PlaneGeometry(14, 12),
+  new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.88, metalness: 0.02 })
+);
+floor.rotation.x = -Math.PI / 2;
+scene.add(floor);
+
+// 窗光（侧墙发光面）
+const windowLight = new THREE.Mesh(
+  new THREE.PlaneGeometry(2.4, 2.6),
+  new THREE.MeshBasicMaterial({ color: 0xffe08a, transparent: true, opacity: 0.35, side: THREE.DoubleSide })
+);
+windowLight.position.set(6.85, 2.2, -1.2);
+windowLight.rotation.y = -Math.PI / 2;
+scene.add(windowLight);
+
+// 桌面木纹
+const tableTex = createCanvasTexture(512, 256, (ctx, w, h) => {
+  ctx.fillStyle = '#8a5a1a';
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 50; i++) {
+    const y = Math.random() * h;
+    ctx.strokeStyle = 'rgba(50, 28, 6, ' + (0.2 + Math.random() * 0.35) + ')';
+    ctx.lineWidth = 0.8 + Math.random() * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x < w; x += 8) ctx.lineTo(x, y + Math.sin(x * 0.03 + i) * 1.6);
+    ctx.stroke();
+  }
+});
+const tableMat = new THREE.MeshStandardMaterial({ map: tableTex, roughness: 0.78, metalness: 0.04, color: 0xc4a04a });
+const table = new THREE.Group();
+const top = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.1, 1.15), tableMat);
+top.position.y = 0.78;
+table.add(top);
+const legGeo = new THREE.BoxGeometry(0.1, 0.78, 0.1);
+[[-0.8, 0.39, -0.46], [0.8, 0.39, -0.46], [-0.8, 0.39, 0.46], [0.8, 0.39, 0.46]].forEach((p) => {
+  const leg = new THREE.Mesh(legGeo, tableMat);
+  leg.position.set(p[0], p[1], p[2]);
+  table.add(leg);
+});
+scene.add(table);
+
+// 陶罐釉面
+const vaseTex = createCanvasTexture(256, 256, (ctx, w, h) => {
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, '#d8c46a');
+  g.addColorStop(0.45, '#c4a83a');
+  g.addColorStop(1, '#8a6a1c');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = '#3d6b5c';
+  ctx.fillRect(0, h * 0.38, w, h * 0.12);
+  for (let i = 0; i < 40; i++) {
+    ctx.strokeStyle = 'rgba(90, 70, 20, 0.2)';
+    ctx.beginPath();
+    ctx.moveTo(Math.random() * w, Math.random() * h);
+    ctx.lineTo(Math.random() * w, Math.random() * h);
+    ctx.stroke();
+  }
+});
+const vasePoints = [
+  new THREE.Vector2(0.02, 0.0),
+  new THREE.Vector2(0.42, 0.02),
+  new THREE.Vector2(0.48, 0.12),
+  new THREE.Vector2(0.36, 0.38),
+  new THREE.Vector2(0.30, 0.72),
+  new THREE.Vector2(0.34, 1.05),
+  new THREE.Vector2(0.46, 1.22),
+  new THREE.Vector2(0.40, 1.30),
+];
+const vaseGeo = new THREE.LatheGeometry(vasePoints, 28);
+const vase = new THREE.Mesh(vaseGeo, new THREE.MeshStandardMaterial({
+  map: vaseTex, roughness: 0.45, metalness: 0.08, color: 0xe8d070,
+}));
+vase.position.set(0, 0.83, 0);
+scene.add(vase);
+
+const petalTexBloom = createCanvasTexture(128, 256, (ctx, w, h) => {
+  const g = ctx.createLinearGradient(w / 2, h, w / 2, 0);
+  g.addColorStop(0, '#c47a10');
+  g.addColorStop(0.35, '#f0c430');
+  g.addColorStop(1, '#fff3a0');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'overlay';
+  for (let i = 0; i < 30; i++) {
+    ctx.strokeStyle = 'rgba(180, 90, 10, 0.25)';
+    ctx.lineWidth = 2 + Math.random() * 4;
+    ctx.beginPath();
+    ctx.moveTo(w * 0.5, h);
+    ctx.quadraticCurveTo(w * (0.2 + Math.random() * 0.6), h * 0.5, w * (0.3 + Math.random() * 0.4), 0);
+    ctx.stroke();
+  }
+});
+const petalTexWilt = createCanvasTexture(128, 256, (ctx, w, h) => {
+  const g = ctx.createLinearGradient(w / 2, h, w / 2, 0);
+  g.addColorStop(0, '#5c3a10');
+  g.addColorStop(0.4, '#a06a18');
+  g.addColorStop(1, '#c4a050');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+});
+const seedTex = createCanvasTexture(256, 256, (ctx, w, h) => {
+  ctx.fillStyle = '#3a2a10';
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 220; i++) {
+    const a = i * 2.399;
+    const r = Math.sqrt(i / 220) * w * 0.48;
+    const x = w / 2 + Math.cos(a) * r;
+    const y = h / 2 + Math.sin(a) * r;
+    ctx.fillStyle = i % 3 === 0 ? '#2a1c08' : '#6a4a18';
+    ctx.beginPath();
+    ctx.arc(x, y, 2 + (i % 3), 0, Math.PI * 2);
+    ctx.fill();
+  }
+});
+
+function createPetalGeometry() {
+  const shape = new THREE.Shape();
+  shape.moveTo(0, 0);
+  shape.quadraticCurveTo(0.055, 0.1, 0.018, 0.34);
+  shape.quadraticCurveTo(0, 0.38, -0.018, 0.34);
+  shape.quadraticCurveTo(-0.055, 0.1, 0, 0);
+  return new THREE.ExtrudeGeometry(shape, { depth: 0.01, bevelEnabled: false, steps: 1 });
+}
+const petalGeo = createPetalGeometry();
+const petalMatBloom = new THREE.MeshStandardMaterial({ map: petalTexBloom, roughness: 0.7, side: THREE.DoubleSide });
+const petalMatWilt = new THREE.MeshStandardMaterial({ map: petalTexWilt, roughness: 0.82, side: THREE.DoubleSide });
+const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a6a38, roughness: 0.85 });
+const leafMat = new THREE.MeshStandardMaterial({ color: 0x3d5c28, roughness: 0.8, side: THREE.DoubleSide });
+const seedMat = new THREE.MeshStandardMaterial({ map: seedTex, roughness: 0.9, color: 0x6a4820 });
+
+const flowers = [];
+
+function createSunflower(seed, radius, angle, height, stage) {
+  const g = new THREE.Group();
+  const lean = (rand(seed + 2) - 0.5) * 0.35;
+  const curve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0, 0.15, 0),
+    new THREE.Vector3(lean * 0.12, height * 0.4, (rand(seed + 3) - 0.5) * 0.08),
+    new THREE.Vector3(lean * 0.22, height * 0.75, (rand(seed + 4) - 0.5) * 0.1),
+    new THREE.Vector3(lean * 0.18, height, 0),
+  ]);
+  const stem = new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.018 + rand(seed) * 0.01, 6, false), stemMat);
+  g.add(stem);
+  const leaf = new THREE.Mesh(new THREE.PlaneGeometry(0.16, 0.08), leafMat);
+  leaf.position.copy(curve.getPoint(0.45));
+  leaf.rotation.set(0.4, angle, 0.6);
+  g.add(leaf);
+  const head = new THREE.Group();
+  const tip = curve.getPoint(1);
+  head.position.copy(tip);
+  const wilt = stage === 2;
+  const mature = stage >= 1;
+  head.rotation.x = wilt ? 1.05 : 0.25 + rand(seed + 5) * 0.25;
+  head.rotation.z = lean;
+  const discR = wilt ? 0.11 : 0.16;
+  const disc = new THREE.Mesh(new THREE.CylinderGeometry(discR * 0.85, discR, 0.07, 16), seedMat);
+  disc.rotation.x = Math.PI / 2;
+  head.add(disc);
+  const petalCount = (wilt ? 10 : 16) + (q.petalExtra ? 8 : 0);
+  const pMat = wilt ? petalMatWilt : petalMatBloom;
+  for (let i = 0; i < petalCount; i++) {
+    const petal = new THREE.Mesh(petalGeo, pMat);
+    const a = (i / petalCount) * Math.PI * 2 + rand(seed + i) * 0.12;
+    const spread = discR * 0.7;
+    petal.position.set(Math.cos(a) * spread, Math.sin(a) * spread, 0.02);
+    petal.rotation.z = a - Math.PI / 2;
+    petal.rotation.x = wilt ? 0.7 : 0.15 + rand(seed + i + 8) * 0.25;
+    const sc = (wilt ? 0.7 : 1) * (0.85 + rand(seed + i + 20) * 0.4);
+    petal.scale.set(sc, sc * (mature ? 1.05 : 1.15), 1);
+    head.add(petal);
+  }
+  g.add(head);
+  g.position.set(Math.cos(angle) * radius, 0.83, Math.sin(angle) * radius);
+  g.userData = { sway: 0.4 + rand(seed + 9) * 0.8, seed };
+  return g;
+}
+
+const flowerSpecs = [
+  [1.1, 0.04, 0.2, 1.48, 0],
+  [2.4, 0.16, 1.1, 1.32, 0],
+  [3.8, 0.18, 2.4, 1.18, 1],
+  [5.0, 0.14, 3.5, 1.40, 0],
+  [6.2, 0.20, 4.6, 1.08, 2],
+  [7.5, 0.12, 5.6, 1.36, 0],
+  [8.7, 0.17, 0.8, 0.98, 2],
+  [10.1, 0.15, 1.9, 1.22, 1],
+  [11.3, 0.10, 3.0, 1.44, 0],
+  [12.6, 0.19, 4.1, 1.12, 1],
+  [13.8, 0.13, 5.2, 1.28, 0],
+  [15.2, 0.08, 6.0, 0.92, 2],
+];
+flowerSpecs.forEach((s) => {
+  const f = createSunflower(s[0], s[1], s[2], s[3], s[4]);
+  scene.add(f);
+  flowers.push(f);
+});
+
+// 灯光
+scene.add(new THREE.AmbientLight(0xffe6a0, 0.42));
+scene.add(new THREE.HemisphereLight(0xffe08a, 0x4a3010, 0.55));
+const sun = new THREE.DirectionalLight(0xfff0b0, 1.35);
+sun.position.set(6, 5, 2);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xc8e0ff, 0.25);
+fill.position.set(-4, 3, 5);
+scene.add(fill);
+const vaseGlow = new THREE.PointLight(0xffcc55, 1.6, 6);
+vaseGlow.position.set(0, 2.1, 0);
+scene.add(vaseGlow);
+
+// 金粉尘埃
+function createDust(count, size, opacity, range) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const seed = new Float32Array(count);
+  for (let i = 0; i < count; i++) {
+    pos[i * 3] = (Math.random() - 0.5) * range[0];
+    pos[i * 3 + 1] = Math.random() * range[1];
+    pos[i * 3 + 2] = (Math.random() - 0.5) * range[2];
+    seed[i] = Math.random() * 1000;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uSize: { value: size }, uOpacity: { value: opacity } },
+    vertexShader: `
+      uniform float uTime; uniform float uSize;
+      attribute float aSeed;
+      void main() {
+        vec3 p = position;
+        float t = uTime + aSeed;
+        p.x += sin(t * 0.25) * 0.4;
+        p.y += sin(t * 0.18) * 0.5;
+        p.y = mod(p.y + 0.5, 4.0);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = uSize * (280.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      uniform float uOpacity;
+      void main() {
+        vec2 uv = gl_PointCoord - 0.5;
+        if (length(uv) > 0.5) discard;
+        float a = smoothstep(0.5, 0.0, length(uv)) * uOpacity;
+        gl_FragColor = vec4(1.0, 0.85, 0.35, a);
+      }`,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+  return mat;
+}
+const dustMat = createDust(q.particles, 0.07, 0.45, [10, 4, 10]);
+
+const controls = new PointerLockControls(camera, document.body);
+const startOverlay = document.getElementById('startOverlay');
+const crosshair = document.getElementById('crosshair');
+const backGallery = document.getElementById('backGallery');
+
+// 点击返回画廊时先解锁指针，并阻止冒泡到遮罩的进入逻辑
+backGallery.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (controls.isLocked) controls.unlock();
+});
+
+startOverlay.addEventListener('click', () => controls.lock());
+controls.addEventListener('lock', () => {
+  startOverlay.classList.add('hide');
+  crosshair.classList.add('show');
+});
+controls.addEventListener('unlock', () => {
+  startOverlay.classList.remove('hide');
+  crosshair.classList.remove('show');
+});
+scene.add(controls.getObject());
+
+const moveState = { forward: false, backward: false, left: false, right: false };
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
+    case 'KeyS': case 'ArrowDown': moveState.backward = true; break;
+    case 'KeyA': case 'ArrowLeft': moveState.left = true; break;
+    case 'KeyD': case 'ArrowRight': moveState.right = true; break;
+  }
+});
+document.addEventListener('keyup', (e) => {
+  switch (e.code) {
+    case 'KeyW': case 'ArrowUp': moveState.forward = false; break;
+    case 'KeyS': case 'ArrowDown': moveState.backward = false; break;
+    case 'KeyA': case 'ArrowLeft': moveState.left = false; break;
+    case 'KeyD': case 'ArrowRight': moveState.right = false; break;
+  }
+});
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  q.bloomStrength, q.bloomRadius, q.bloomThreshold
+);
+composer.addPass(bloomPass);
+const postVShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const postFShader = `
+uniform sampler2D tDiffuse; uniform float uTime; uniform float uGrain; uniform float uGlow;
+varying vec2 vUv;
+float rand(vec2 co) { return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 uv = vUv;
+  vec3 col = texture2D(tDiffuse, uv).rgb;
+  vec2 c = uv - 0.5;
+  float vignette = 1.0 - dot(c, c) * 1.8;
+  vignette = smoothstep(0.25, 1.1, vignette);
+  col *= vignette;
+  col += uGlow * vec3(0.08, 0.05, 0.01);
+  float grain = rand(uv * 700.0 + uTime) * 2.0 - 1.0;
+  col += grain * uGrain;
+  gl_FragColor = vec4(col, 1.0);
+}`;
+const postPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uGrain: { value: q.filmGrain },
+    uGlow: { value: 0 },
+  },
+  vertexShader: postVShader,
+  fragmentShader: postFShader,
+});
+composer.addPass(postPass);
+composer.addPass(new OutputPass());
+
+const qualityBtn = document.getElementById('qualityToggle');
+qualityBtn.textContent = '画质：' + (currentQuality === 'high' ? '高' : '低');
+qualityBtn.addEventListener('click', () => {
+  currentQuality = currentQuality === 'high' ? 'low' : 'high';
+  localStorage.setItem(QUALITY_STORAGE_KEY, currentQuality);
+  location.reload();
+});
+const fpsEl = document.getElementById('fpsCounter');
+let frameCount = 0;
+let lastFpsTime = performance.now();
+
+const clock = new THREE.Clock();
+let glow = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  // getDelta 会推进时钟，随后读 elapsedTime
+  const delta = Math.min(clock.getDelta(), 0.1);
+  const time = clock.elapsedTime;
+
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 500) {
+    fpsEl.textContent = Math.round(frameCount * 1000 / (now - lastFpsTime)) + ' FPS';
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+
+  wallMat.uniforms.uTime.value = time;
+  dustMat.uniforms.uTime.value = time;
+  postPass.uniforms.uTime.value = time;
+
+  const cam = controls.getObject();
+  const dist = cam.position.distanceTo(new THREE.Vector3(0, 1.6, 0));
+  const targetGlow = Math.max(0, 1.0 - dist / 6);
+  glow += (targetGlow * targetGlow - glow) * 0.04;
+  wallMat.uniforms.uGlow.value = glow;
+  postPass.uniforms.uGlow.value = glow;
+  vaseGlow.intensity = 1.4 + glow * 1.8;
+
+  flowers.forEach((f) => {
+    f.rotation.z = Math.sin(time * f.userData.sway) * 0.03;
+    f.rotation.x = Math.sin(time * f.userData.sway * 0.7 + f.userData.seed) * 0.02;
+  });
+
+  if (controls.isLocked) {
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+    direction.z = Number(moveState.forward) - Number(moveState.backward);
+    direction.x = Number(moveState.right) - Number(moveState.left);
+    direction.normalize();
+    const speed = 8;
+    if (moveState.forward || moveState.backward) velocity.z -= direction.z * speed * delta;
+    if (moveState.left || moveState.right) velocity.x -= direction.x * speed * delta;
+    controls.moveRight(-velocity.x * delta);
+    controls.moveForward(-velocity.z * delta);
+    if (cam.position.x > 5.5) cam.position.x = 5.5;
+    if (cam.position.x < -5.5) cam.position.x = -5.5;
+    if (cam.position.z > 5.2) cam.position.z = 5.2;
+    if (cam.position.z < -4.5) cam.position.z = -4.5;
+    const dx = cam.position.x;
+    const dz = cam.position.z;
+    const tableR2 = 0.85 * 0.85;
+    if (dx * dx + dz * dz < tableR2) {
+      const len = Math.sqrt(dx * dx + dz * dz) || 0.001;
+      cam.position.x = dx / len * 0.85;
+      cam.position.z = dz / len * 0.85;
+    }
+    cam.position.y = 1.6;
+  }
+
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>

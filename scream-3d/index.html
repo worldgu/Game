@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate" />
+<title>THE SCREAM — 走进蒙克的世界</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #0a0503; font-family: Georgia, serif; cursor: crosshair; }
+#app { width: 100vw; height: 100vh; }
+canvas { display: block; }
+.title { position: fixed; top: 28px; left: 32px; color: rgba(255,200,150,0.85); pointer-events: none; z-index: 10; text-shadow: 0 2px 20px rgba(0,0,0,0.8); }
+.title h1 { font-size: 26px; font-weight: normal; letter-spacing: 8px; margin-bottom: 6px; }
+.title p { font-size: 11px; letter-spacing: 3px; color: rgba(255,200,150,0.5); font-style: italic; }
+.controls { position: fixed; bottom: 28px; left: 32px; color: rgba(255,200,150,0.5); font-size: 11px; letter-spacing: 2px; pointer-events: none; z-index: 10; line-height: 2; text-transform: uppercase; text-shadow: 0 2px 10px rgba(0,0,0,0.8); }
+.controls kbd { display: inline-block; padding: 2px 8px; margin: 0 2px; border: 1px solid rgba(255,200,150,0.3); border-radius: 3px; background: rgba(255,200,150,0.08); font-family: monospace; font-size: 10px; }
+#startOverlay { position: fixed; inset: 0; background: rgba(10,5,3,0.94); display: flex; align-items: center; justify-content: center; flex-direction: column; z-index: 100; cursor: pointer; transition: opacity 1.2s ease; }
+#startOverlay.hide { opacity: 0; pointer-events: none; }
+#startOverlay h2 { color: rgba(255,200,150,0.9); font-size: 34px; font-weight: normal; letter-spacing: 14px; margin-bottom: 16px; }
+#startOverlay p { color: rgba(255,200,150,0.5); font-size: 13px; letter-spacing: 3px; font-style: italic; }
+#startOverlay .enter { margin-top: 40px; padding: 12px 40px; border: 1px solid rgba(255,200,150,0.4); color: rgba(255,200,150,0.7); font-size: 12px; letter-spacing: 4px; text-transform: uppercase; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 0.6; } 50% { opacity: 1; } }
+#crosshair { position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%); width: 4px; height: 4px; border-radius: 50%; background: rgba(255,200,150,0.4); pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.5s; }
+#crosshair.show { opacity: 1; }
+#qualityToggle { position: fixed; top: 28px; right: 32px; z-index: 20; padding: 8px 16px; border: 1px solid rgba(255,200,150,0.3); background: rgba(10,5,3,0.6); color: rgba(255,200,150,0.7); font-size: 11px; letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-family: Georgia, serif; backdrop-filter: blur(10px); border-radius: 2px; transition: all 0.3s; }
+#qualityToggle:hover { background: rgba(255,200,150,0.15); color: rgba(255,200,150,0.95); }
+#fpsCounter { position: fixed; top: 70px; right: 32px; z-index: 20; color: rgba(255,200,150,0.4); font-size: 11px; font-family: monospace; letter-spacing: 1px; pointer-events: none; }
+#backGallery { position: fixed; top: 88px; left: 32px; z-index: 110; padding: 8px 16px; border: 1px solid rgba(255,200,150,0.3); background: rgba(10,5,3,0.6); color: rgba(255,200,150,0.7); font-size: 11px; letter-spacing: 2px; text-decoration: none; font-family: Georgia, serif; backdrop-filter: blur(10px); border-radius: 2px; transition: all 0.3s; }
+#backGallery:hover { background: rgba(255,200,150,0.15); color: rgba(255,200,150,0.95); }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="crosshair"></div>
+<div class="title"><h1>THE SCREAM</h1><p>Edvard Munch &middot; 1893</p></div>
+<button id="qualityToggle">画质：高</button>
+<a id="backGallery" href="/">返回画廊</a>
+<div id="fpsCounter">-- FPS</div>
+<div class="controls">
+<div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移动</div>
+<div><kbd>鼠标</kbd> 环顾四周</div>
+<div><kbd>Esc</kbd> 退出视角</div>
+</div>
+<div id="startOverlay"><h2>THE SCREAM</h2><p>I felt the great scream in nature</p><div class="enter">点击进入</div></div>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+const QUALITY = {
+  high: { pixelRatio: Math.min(window.devicePixelRatio, 2), particles: 3000, bloomStrength: 0.4, bloomRadius: 0.4, bloomThreshold: 0.78, waterSegX: 100, waterSegY: 70, skyFbmLayers: 5, skySegments: 80, filmGrain: 0.06 },
+  low: { pixelRatio: 1, particles: 1000, bloomStrength: 0.2, bloomRadius: 0.3, bloomThreshold: 0.85, waterSegX: 30, waterSegY: 20, skyFbmLayers: 3, skySegments: 32, filmGrain: 0.03 },
+};
+const QUALITY_STORAGE_KEY = 'screamQuality';
+// 刷新后从本地存储恢复画质，避免切档后总是回到高画质
+let currentQuality = localStorage.getItem(QUALITY_STORAGE_KEY) === 'low' ? 'low' : 'high';
+let q = QUALITY[currentQuality];
+
+const container = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x2a0e05, 0.022);
+
+const camera = new THREE.PerspectiveCamera(72, window.innerWidth / window.innerHeight, 0.1, 500);
+camera.position.set(0, 1.75, 18);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+renderer.setPixelRatio(q.pixelRatio);
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x150804, 1);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 0.95;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+container.appendChild(renderer.domElement);
+
+// 天空 shader
+const skyVShader = `
+varying vec3 vWorldPos;
+void main() {
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const skyFShader = `
+uniform float uTime;
+uniform int uFbmLayers;
+uniform float uScreamIntensity;
+varying vec3 vWorldPos;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p); vec2 f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash(i), b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0)), d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+float fbm(vec2 p) {
+  float v = 0.0; float a = 0.5;
+  for (int i = 0; i < 6; i++) { if (i >= uFbmLayers) break;
+    v += a * noise(p); p *= 2.15; a *= 0.5;
+  }
+  return v;
+}
+void main() {
+  vec3 dir = normalize(vWorldPos);
+  float lon = atan(dir.z, dir.x);
+  float lat = asin(dir.y);
+  float skyFactor = smoothstep(-0.4, 0.9, dir.y);
+  float t = uTime * 0.025;
+  float screamSpeed = 1.0 + uScreamIntensity * 3.0;
+  vec2 uvMain = vec2(lon * 2.5 + t * screamSpeed, lat * 1.8 + t * 0.2 * screamSpeed);
+  float mainSwirl = fbm(uvMain + vec2(sin(t*0.15)*0.4, cos(t*0.1)*0.3));
+  vec2 uvSec = vec2(-lon * 3.5 + t * 0.6 * screamSpeed, lat * 2.5 - t * 0.4 * screamSpeed);
+  float secSwirl = fbm(uvSec * 1.3) * 0.6;
+  vec2 uvDetail = vec2(lon * 8.0 + t * 1.2 * screamSpeed, lat * 6.0 + t * 0.5 * screamSpeed);
+  float detail = fbm(uvDetail) * 0.25;
+  float n = mainSwirl * 0.55 + secSwirl * 0.3 + detail * 0.15;
+  n = mix(n, pow(n, 1.3 + uScreamIntensity), uScreamIntensity * 0.5);
+  vec3 c1 = vec3(0.18, 0.07, 0.28);
+  vec3 c2 = vec3(0.70, 0.15, 0.10);
+  vec3 c3 = vec3(0.92, 0.45, 0.08);
+  vec3 c4 = vec3(0.98, 0.70, 0.18);
+  vec3 c5 = vec3(0.70, 0.30, 0.06);
+  vec3 c6 = vec3(0.30, 0.10, 0.04);
+  float s1 = smoothstep(0.20, 0.38, n);
+  float s2 = smoothstep(0.38, 0.55, n);
+  float s3 = smoothstep(0.55, 0.72, n);
+  float s4 = smoothstep(0.72, 0.85, n);
+  float s5 = smoothstep(0.85, 0.95, n);
+  vec3 col = mix(c1, c2, s1);
+  col = mix(col, c3, s2);
+  col = mix(col, c4, s3);
+  col = mix(col, c5, s4);
+  col = mix(col, c6, s5);
+  col *= 0.5 + 0.5 * skyFactor;
+  col *= 0.9 + 0.2 * smoothstep(-0.2, 0.5, dir.y);
+  float brush1 = sin(lon * 50.0 + mainSwirl * 15.0) * 0.5 + 0.5;
+  float brush2 = sin(lon * 30.0 + lat * 25.0 + secSwirl * 10.0) * 0.5 + 0.5;
+  float brush3 = sin(lat * 45.0 + detail * 20.0) * 0.5 + 0.5;
+  float brush = brush1 * 0.5 + brush2 * 0.3 + brush3 * 0.2;
+  col *= 0.92 + 0.08 * brush;
+  float avg = (col.r + col.g + col.b) / 3.0;
+  col = mix(col, mix(vec3(avg), col, 1.0 + uScreamIntensity * 0.3), uScreamIntensity);
+  col = pow(col, vec3(0.95));
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const skyGeo = new THREE.SphereGeometry(200, q.skySegments, q.skySegments);
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide,
+  uniforms: { uTime: { value: 0 }, uFbmLayers: { value: q.skyFbmLayers }, uScreamIntensity: { value: 0 } },
+  vertexShader: skyVShader,
+  fragmentShader: skyFShader,
+});
+const sky = new THREE.Mesh(skyGeo, skyMat);
+scene.add(sky);
+
+// 远山
+function createMountain(rangeZ, color, scaleY, offsetX, seed) {
+  const shape = new THREE.Shape();
+  const segments = 30; const width = 160;
+  shape.moveTo(-width/2 + offsetX, 0);
+  for (let i = 0; i <= segments; i++) {
+    const x = -width/2 + (i / segments) * width + offsetX;
+    const n = Math.sin(i * 0.45 + seed) * 12 + Math.sin(i * 1.1 + seed * 2.3) * 5
+            + Math.sin(i * 2.3 + seed * 0.7) * 2.5 + Math.sin(i * 4.1 + seed * 1.5) * 1.2;
+    shape.lineTo(x, 2 + Math.max(0, n) * scaleY);
+  }
+  shape.lineTo(width/2 + offsetX, 0); shape.closePath();
+  const geo = new THREE.ShapeGeometry(shape, 10);
+  const mat = new THREE.MeshBasicMaterial({ color, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.set(0, -2, rangeZ);
+  return mesh;
+}
+scene.add(createMountain(-95, 0x1e1a30, 1.1, 0, 1.0));
+scene.add(createMountain(-75, 0x301d2a, 1.3, 20, 2.8));
+scene.add(createMountain(-55, 0x48181a, 0.9, -10, 4.2));
+
+// 水面
+const waterVShader = `
+uniform float uTime; uniform float uScreamIntensity;
+varying vec2 vUv; varying float vWave; varying vec3 vWorldPos;
+void main() {
+  vUv = uv; vec3 pos = position;
+  float sp = 1.0 + uScreamIntensity * 2.0;
+  float wave = sin(pos.x * 0.07 + uTime * 0.35 * sp) * 0.3
+             + sin(pos.x * 0.03 + pos.y * 0.05 + uTime * 0.2 * sp) * 0.5
+             + sin(pos.y * 0.08 + uTime * 0.45 * sp) * 0.2
+             + sin(pos.x * 0.015 + pos.y * 0.02 + uTime * 0.1 * sp) * 0.4;
+  pos.z = wave; vWave = wave;
+  vec4 wp = modelMatrix * vec4(pos, 1.0);
+  vWorldPos = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const waterFShader = `
+uniform float uTime; uniform vec3 uSkyColor1; uniform vec3 uSkyColor2;
+uniform vec3 uDeepColor; uniform float uScreamIntensity;
+varying vec2 vUv; varying float vWave; varying vec3 vWorldPos;
+void main() {
+  float depthFactor = smoothstep(-120.0, -20.0, vWorldPos.z);
+  vec3 col = uDeepColor;
+  vec3 skyMix = mix(uSkyColor2, uSkyColor1, 0.5 + 0.5 * vWave);
+  float ref = 0.15 + 0.35 * depthFactor + 0.15 * max(0.0, vWave);
+  col = mix(col, skyMix * 0.6, ref);
+  float hl = smoothstep(0.15, 0.7, vWave + 0.4);
+  col += hl * 0.12;
+  float rip = sin(vWorldPos.x * 0.2 + uTime * 0.8) * sin(vWorldPos.z * 0.15 + uTime * 0.6) * 0.5 + 0.5;
+  col += rip * 0.03;
+  col = mix(col, col * 1.2, uScreamIntensity * 0.3);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const waterGeo = new THREE.PlaneGeometry(500, 300, q.waterSegX, q.waterSegY);
+const waterMat = new THREE.ShaderMaterial({
+  side: THREE.DoubleSide,
+  uniforms: {
+    uTime: { value: 0 }, uScreamIntensity: { value: 0 },
+    uSkyColor1: { value: new THREE.Color(0x8a2010) },
+    uSkyColor2: { value: new THREE.Color(0x4a1520) },
+    uDeepColor: { value: new THREE.Color(0x0d0a14) },
+  },
+  vertexShader: waterVShader, fragmentShader: waterFShader,
+});
+const water = new THREE.Mesh(waterGeo, waterMat);
+water.rotation.x = -Math.PI / 2;
+water.position.set(0, -1.6, -50);
+scene.add(water);
+
+// 木桥 + 程序化木纹
+const bridgeGroup = new THREE.Group();
+
+function createWoodTexture(seed) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 128;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = 'rgb(' + (80+seed*10) + ',' + (40+seed*5) + ',' + (15+seed*3) + ')';
+  ctx.fillRect(0, 0, 512, 128);
+  for (let i = 0; i < 60; i++) {
+    const y = Math.random() * 128;
+    const d = 0.3 + Math.random() * 0.4;
+    ctx.strokeStyle = 'rgba(' + (40+seed*5) + ',' + (20+seed*3) + ',' + (8+seed*2) + ',' + d + ')';
+    ctx.lineWidth = 0.5 + Math.random() * 2;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x < 512; x += 10) {
+      const w = Math.sin(x * 0.02 + i * 0.5 + seed) * (1 + Math.random() * 2);
+      ctx.lineTo(x, y + w);
+    }
+    ctx.stroke();
+  }
+  for (let i = 0; i < 5; i++) {
+    const x = Math.random() * 512, y = Math.random() * 128, r = 3 + Math.random() * 8;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, 'rgba(' + (25+seed*3) + ',' + (12+seed*2) + ',' + (5+seed) + ',0.8)');
+    g.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x-r, y-r, r*2, r*2);
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
+const plankCount = 40;
+const woodTextures = [];
+for (let i = 0; i < 4; i++) woodTextures.push(createWoodTexture(i));
+
+for (let i = 0; i < plankCount; i++) {
+  const t = i / plankCount;
+  const width = 10 - t * 7;
+  const plankGeo = new THREE.BoxGeometry(width, 0.2, 1.2);
+  const mat = new THREE.MeshStandardMaterial({ map: woodTextures[i % 4], roughness: 0.8, metalness: 0.05 });
+  woodTextures[i % 4].repeat.set(width * 0.3, 0.8);
+  const plank = new THREE.Mesh(plankGeo, mat);
+  plank.position.z = -i * 1.2;
+  plank.rotation.z = Math.sin(i * 1.7) * 0.015;
+  plank.position.y = Math.sin(i * 2.3) * 0.02;
+  bridgeGroup.add(plank);
+}
+
+function createRailing(side) {
+  const g = new THREE.Group();
+  const d = side === 'left' ? -1 : 1;
+  const mat = new THREE.MeshStandardMaterial({ color: 0x5a3010, roughness: 0.75, metalness: 0.05, map: woodTextures[2] });
+  const top = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.2, 52), mat);
+  top.position.set(d * 4.5, 1.25, -26);
+  g.add(top);
+  const bot = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 52), mat);
+  bot.position.set(d * 4.5, 0.45, -26);
+  g.add(bot);
+  for (let i = 0; i < 22; i++) {
+    const z = -i * 2.4 - 0.5;
+    const t = i / 22;
+    const xOff = d * (5.2 - t * 3.8);
+    const h = 1.15 + Math.sin(i * 0.8) * 0.05;
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.14, h, 0.14), mat);
+    post.position.set(xOff, 0.6 + h/2 - 0.575, z);
+    g.add(post);
+  }
+  return g;
+}
+bridgeGroup.add(createRailing('left'));
+bridgeGroup.add(createRailing('right'));
+scene.add(bridgeGroup);
+
+// 前景栏杆（增加深度）
+function createFgRailing(side) {
+  const d = side === 'left' ? -1 : 1;
+  const g = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: 0x4a2508, roughness: 0.85 });
+  const post = new THREE.Mesh(new THREE.BoxGeometry(0.25, 2.5, 0.25), mat);
+  post.position.set(d * 2.2, 1.2, 2.5);
+  g.add(post);
+  const rail = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 3), mat);
+  rail.position.set(d * 2.2 + d * 0.1, 1.8, 1);
+  rail.rotation.y = d * 0.3;
+  g.add(rail);
+  return g;
+}
+scene.add(createFgRailing('left'));
+scene.add(createFgRailing('right'));
+
+// 尖叫人物
+const figureGroup = new THREE.Group();
+
+function createSkinTexture() {
+  const c = document.createElement('canvas');
+  c.width = 256; c.height = 256;
+  const ctx = c.getContext('2d');
+  const grad = ctx.createRadialGradient(128, 128, 20, 128, 128, 150);
+  grad.addColorStop(0, '#e8b88a');
+  grad.addColorStop(0.5, '#d49864');
+  grad.addColorStop(1, '#a06838');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.globalCompositeOperation = 'overlay';
+  for (let i = 0; i < 80; i++) {
+    const x = Math.random() * 256, y = Math.random() * 256;
+    const len = 20 + Math.random() * 60;
+    const ang = Math.random() * Math.PI;
+    const r = Math.floor(180 + Math.random()*40);
+    const g = Math.floor(120 + Math.random()*40);
+    const b = Math.floor(80 + Math.random()*30);
+    const a = 0.1 + Math.random() * 0.15;
+    ctx.strokeStyle = 'rgba('+r+','+g+','+b+','+a+')';
+    ctx.lineWidth = 1 + Math.random() * 3;
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+    ctx.stroke();
+  }
+  ctx.globalCompositeOperation = 'source-over';
+  return new THREE.CanvasTexture(c);
+}
+const skinTex = createSkinTexture();
+
+const bodyMat = new THREE.MeshStandardMaterial({ map: skinTex, color: 0xd89868, roughness: 0.65, metalness: 0.05 });
+const clothMat = new THREE.MeshStandardMaterial({ color: 0x6a3820, roughness: 0.85 });
+
+const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 1.4, 6, 16), clothMat);
+body.position.y = 1.4; body.rotation.x = -0.1;
+figureGroup.add(body);
+
+const headGeo = new THREE.SphereGeometry(0.52, 32, 32);
+const hp = headGeo.attributes.position;
+for (let i = 0; i < hp.count; i++) {
+  let x = hp.getX(i), y = hp.getY(i), z = hp.getZ(i);
+  y *= 1.5; x *= 0.88; z *= 0.8;
+  if (y < -0.2) { const s = 1.0 + (y + 0.2) * 0.3; x *= s; z *= s; }
+  hp.setXYZ(i, x, y, z);
+}
+headGeo.computeVertexNormals();
+const head = new THREE.Mesh(headGeo, bodyMat);
+head.position.y = 2.6; head.rotation.x = -0.15;
+figureGroup.add(head);
+
+// 衣袍
+for (let i = 0; i < 3; i++) {
+  const robe = new THREE.Mesh(new THREE.ConeGeometry(0.5 - i*0.1, 0.8, 6), clothMat);
+  robe.position.set((i-1)*0.25, 0.8 - i*0.15, 0.1 + i*0.1);
+  robe.rotation.x = 0.3 + i*0.1;
+  robe.rotation.z = (i-1) * 0.15;
+  figureGroup.add(robe);
+}
+
+const armMat = new THREE.MeshStandardMaterial({ map: skinTex, color: 0xc88858, roughness: 0.6 });
+const armGeo = new THREE.CapsuleGeometry(0.12, 0.7, 4, 12);
+const leftArm = new THREE.Mesh(armGeo, armMat);
+leftArm.position.set(-0.48, 2.5, 0.15);
+leftArm.rotation.z = 0.85; leftArm.rotation.x = 0.3;
+figureGroup.add(leftArm);
+const rightArm = new THREE.Mesh(armGeo, armMat);
+rightArm.position.set(0.48, 2.5, 0.15);
+rightArm.rotation.z = -0.85; rightArm.rotation.x = 0.3;
+figureGroup.add(rightArm);
+
+const handGeo = new THREE.SphereGeometry(0.13, 12, 12);
+const lh = new THREE.Mesh(handGeo, armMat);
+lh.position.set(-0.58, 2.75, 0.35); figureGroup.add(lh);
+const rh = new THREE.Mesh(handGeo, armMat);
+rh.position.set(0.58, 2.75, 0.35); figureGroup.add(rh);
+
+const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 16), new THREE.MeshBasicMaterial({ color: 0x1a0604 }));
+mouth.position.set(0, 2.4, 0.48); figureGroup.add(mouth);
+
+const eyeM = new THREE.MeshBasicMaterial({ color: 0x060302 });
+const le = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), eyeM);
+le.position.set(-0.18, 2.72, 0.48); figureGroup.add(le);
+const re = new THREE.Mesh(new THREE.SphereGeometry(0.06, 12, 12), eyeM);
+re.position.set(0.18, 2.72, 0.48); figureGroup.add(re);
+
+// 尖叫波纹
+const screamRings = [];
+for (let i = 0; i < 3; i++) {
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(0.5 + i*0.3, 0.02, 8, 32),
+    new THREE.MeshBasicMaterial({ color: 0xff6633, transparent: true, opacity: 0, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false })
+  );
+  ring.position.set(0, 2.4, 0.5);
+  ring.userData = { baseOpacity: 0.3, phase: i * 0.33 };
+  figureGroup.add(ring);
+  screamRings.push(ring);
+}
+
+figureGroup.position.set(0, 0.1, -5);
+scene.add(figureGroup);
+
+// 远处行人
+function createWalker(x, z, scale) {
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.9 });
+  const h = new THREE.Mesh(new THREE.SphereGeometry(0.15*scale, 8, 8), m);
+  h.position.y = 1.6 * scale; g.add(h);
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(0.15*scale, 0.18*scale, 0.8*scale, 8), m);
+  b.position.y = 1.0 * scale; g.add(b);
+  g.position.set(x, 0.1, z);
+  return g;
+}
+const walker1 = createWalker(-2.8, -18, 1.0);
+const walker2 = createWalker(-5.0, -20, 1.15);
+scene.add(walker1); scene.add(walker2);
+
+// 灯光
+scene.add(new THREE.AmbientLight(0x402010, 0.45));
+scene.add(new THREE.HemisphereLight(0xff6633, 0x201030, 0.4));
+const sunLight = new THREE.DirectionalLight(0xff9955, 1.5);
+sunLight.position.set(15, 25, -60); scene.add(sunLight);
+const backLight = new THREE.DirectionalLight(0x6644aa, 0.5);
+backLight.position.set(-10, 15, 30); scene.add(backLight);
+const rimLight = new THREE.PointLight(0xff5522, 3, 15);
+rimLight.position.set(0, 3.5, -10); scene.add(rimLight);
+const waterLight = new THREE.PointLight(0x332255, 0.8, 20);
+waterLight.position.set(0, -0.5, -5); scene.add(waterLight);
+
+// 粒子系统（远景尘埃 + 近景大颗粒，全部 GPU 动画）
+function createDustParticles(count, size, opacity, rangeX, rangeY, rangeZ, speedMul) {
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const seed = new Float32Array(count);
+  const color = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    const i3 = i * 3;
+    pos[i3] = (Math.random()-0.5) * rangeX;
+    pos[i3+1] = Math.random() * rangeY - rangeY * 0.15;
+    pos[i3+2] = (Math.random()-0.5) * rangeZ - rangeZ * 0.2;
+    seed[i] = Math.random() * 1000;
+    const t = Math.random();
+    color[i3] = 0.9 + Math.random()*0.1;
+    color[i3+1] = 0.5 + t * 0.25;
+    color[i3+2] = 0.25 + (1-t) * 0.15;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('aSeed', new THREE.BufferAttribute(seed, 1));
+  geo.setAttribute('color', new THREE.BufferAttribute(color, 3));
+  const mat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 }, uSize: { value: size }, uOpacity: { value: opacity } },
+    vertexShader: `
+      uniform float uTime; uniform float uSize;
+      attribute float aSeed; attribute vec3 color;
+      varying vec3 vColor;
+      void main() {
+        vColor = color;
+        vec3 p = position;
+        float t = uTime + aSeed;
+        p.x += sin(t * 0.3) * 2.0;
+        p.y += sin(t * 0.2 + aSeed * 0.1) * 3.0;
+        p.z += cos(t * 0.5) * 1.5;
+        p.y = mod(p.y + 3.0, 25.0) - 3.0;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_PointSize = uSize * (400.0 / -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      varying vec3 vColor; uniform float uOpacity;
+      void main() {
+        vec2 uv = gl_PointCoord - 0.5;
+        float d = length(uv);
+        if (d > 0.5) discard;
+        float a = smoothstep(0.5, 0.0, d) * uOpacity;
+        gl_FragColor = vec4(vColor, a);
+      }`,
+    transparent: true, blending: THREE.AdditiveBlending, depthWrite: false,
+  });
+  const points = new THREE.Points(geo, mat);
+  scene.add(points);
+  return { mesh: points, mat };
+}
+
+const dust1 = createDustParticles(Math.floor(q.particles*0.6), 0.05, 0.5, 100, 25, 120);
+const dust2 = createDustParticles(Math.floor(q.particles*0.4), 0.12, 0.35, 30, 10, 30);
+
+// 第一人称控制
+const controls = new PointerLockControls(camera, document.body);
+const startOverlay = document.getElementById('startOverlay');
+const crosshair = document.getElementById('crosshair');
+const backGallery = document.getElementById('backGallery');
+
+// 点击返回画廊时先解锁指针，并阻止冒泡到遮罩的进入逻辑
+backGallery.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (controls.isLocked) controls.unlock();
+});
+
+startOverlay.addEventListener('click', () => controls.lock());
+controls.addEventListener('lock', () => {
+  startOverlay.classList.add('hide');
+  crosshair.classList.add('show');
+});
+controls.addEventListener('unlock', () => {
+  startOverlay.classList.remove('hide');
+  crosshair.classList.remove('show');
+});
+scene.add(controls.getObject());
+
+const moveState = { forward: false, backward: false, left: false, right: false };
+const velocity = new THREE.Vector3();
+const direction = new THREE.Vector3();
+document.addEventListener('keydown', (e) => {
+  switch(e.code) {
+    case 'KeyW': case 'ArrowUp': moveState.forward = true; break;
+    case 'KeyS': case 'ArrowDown': moveState.backward = true; break;
+    case 'KeyA': case 'ArrowLeft': moveState.left = true; break;
+    case 'KeyD': case 'ArrowRight': moveState.right = true; break;
+  }
+});
+document.addEventListener('keyup', (e) => {
+  switch(e.code) {
+    case 'KeyW': case 'ArrowUp': moveState.forward = false; break;
+    case 'KeyS': case 'ArrowDown': moveState.backward = false; break;
+    case 'KeyA': case 'ArrowLeft': moveState.left = false; break;
+    case 'KeyD': case 'ArrowRight': moveState.right = false; break;
+  }
+});
+
+// 后处理
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloomPass = new UnrealBloomPass(
+  new THREE.Vector2(window.innerWidth, window.innerHeight),
+  q.bloomStrength, q.bloomRadius, q.bloomThreshold
+);
+composer.addPass(bloomPass);
+
+const postVShader = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+const postFShader = `
+uniform sampler2D tDiffuse; uniform float uTime; uniform float uGrain;
+uniform float uScreamIntensity;
+varying vec2 vUv;
+float rand(vec2 co) { return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 uv = vUv;
+  if (uScreamIntensity > 0.01) {
+    vec2 c = uv - 0.5;
+    float dist = length(c);
+    float distort = sin(dist * 30.0 - uTime * 3.0) * uScreamIntensity * 0.008;
+    uv += normalize(c + 0.001) * distort;
+  }
+  vec3 col = texture2D(tDiffuse, uv).rgb;
+  vec2 texel = 1.0 / vec2(textureSize(tDiffuse, 0));
+  vec3 colL = texture2D(tDiffuse, uv + vec2(-texel.x, 0)).rgb;
+  vec3 colR = texture2D(tDiffuse, uv + vec2(texel.x, 0)).rgb;
+  vec3 colU = texture2D(tDiffuse, uv + vec2(0, -texel.y)).rgb;
+  vec3 colD = texture2D(tDiffuse, uv + vec2(0, texel.y)).rgb;
+  float edge = length(colL + colR + colU + colD - 4.0 * col);
+  col += edge * 0.12;
+  vec2 c2 = uv - 0.5;
+  float vignette = 1.0 - dot(c2, c2) * 2.2;
+  vignette = smoothstep(0.3, 1.15, vignette);
+  col *= vignette;
+  float dist2 = length(c2);
+  float aberration = dist2 * (0.004 + uScreamIntensity * 0.01);
+  vec2 dir = normalize(c2 + 0.001);
+  float r = texture2D(tDiffuse, uv + dir * aberration).r;
+  float b = texture2D(tDiffuse, uv - dir * aberration).b;
+  col.r = mix(col.r, r, 0.6);
+  col.b = mix(col.b, b, 0.6);
+  float grain = rand(uv * 800.0 + uTime) * 2.0 - 1.0;
+  col += grain * uGrain;
+  if (uScreamIntensity > 0.01) {
+    col = (col - 0.5) * (1.0 + uScreamIntensity * 0.3) + 0.5;
+    float avg = (col.r + col.g + col.b) / 3.0;
+    col = mix(vec3(avg), col, 1.0 + uScreamIntensity * 0.2);
+  }
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+const postPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null },
+    uTime: { value: 0 },
+    uGrain: { value: q.filmGrain },
+    uScreamIntensity: { value: 0 },
+  },
+  vertexShader: postVShader,
+  fragmentShader: postFShader,
+});
+composer.addPass(postPass);
+composer.addPass(new OutputPass());
+
+// 画质切换：几何细分需重建，写入本地存储后再刷新
+const qualityBtn = document.getElementById('qualityToggle');
+qualityBtn.textContent = '画质：' + (currentQuality === 'high' ? '高' : '低');
+qualityBtn.addEventListener('click', () => {
+  currentQuality = currentQuality === 'high' ? 'low' : 'high';
+  localStorage.setItem(QUALITY_STORAGE_KEY, currentQuality);
+  location.reload();
+});
+const fpsEl = document.getElementById('fpsCounter');
+let frameCount = 0, lastFpsTime = performance.now();
+
+// 渲染循环
+const clock = new THREE.Clock();
+let screamIntensity = 0, screamTarget = 0;
+
+function animate() {
+  requestAnimationFrame(animate);
+  // getDelta 会推进时钟，随后读 elapsedTime，避免二次取 delta 导致移动几乎静止
+  const delta = Math.min(clock.getDelta(), 0.1);
+  const time = clock.elapsedTime;
+  
+  frameCount++;
+  const now = performance.now();
+  if (now - lastFpsTime >= 500) {
+    fpsEl.textContent = Math.round(frameCount * 1000 / (now - lastFpsTime)) + ' FPS';
+    frameCount = 0; lastFpsTime = now;
+  }
+  
+  // 更新 shader uniforms
+  skyMat.uniforms.uTime.value = time;
+  waterMat.uniforms.uTime.value = time;
+  dust1.mat.uniforms.uTime.value = time;
+  dust2.mat.uniforms.uTime.value = time;
+  postPass.uniforms.uTime.value = time;
+  
+  // 尖叫强度（根据与人物距离）
+  const cam = controls.getObject();
+  const distToFig = cam.position.distanceTo(new THREE.Vector3(0, 1.7, -5));
+  screamTarget = Math.max(0, 1.0 - distToFig / 15);
+  screamTarget = screamTarget * screamTarget;
+  screamIntensity += (screamTarget - screamIntensity) * 0.02;
+  
+  skyMat.uniforms.uScreamIntensity.value = screamIntensity;
+  waterMat.uniforms.uScreamIntensity.value = screamIntensity;
+  postPass.uniforms.uScreamIntensity.value = screamIntensity;
+  
+  // 人物动画
+  const tremble = screamIntensity * 0.1;
+  figureGroup.position.y = 0.1 + Math.sin(time * 2) * 0.02 + Math.sin(time * 15) * tremble;
+  figureGroup.rotation.y = Math.sin(time * 0.3) * 0.04 + Math.sin(time * 10) * tremble * 0.5;
+  figureGroup.rotation.z = Math.sin(time * 8) * tremble * 0.3;
+  
+  // 尖叫波纹
+  screamRings.forEach((ring, i) => {
+    const phase = (time * 0.8 + ring.userData.phase) % 1.0;
+    const sc = 0.5 + phase * 3.5;
+    ring.scale.set(sc, sc, 1);
+    ring.material.opacity = ring.userData.baseOpacity * (1.0 - phase) * (0.3 + screamIntensity * 0.7);
+    ring.position.z = 0.5 + phase * 2;
+  });
+  
+  sky.rotation.y = time * 0.006;
+  
+  // 行人走动
+  walker1.position.z = -18 + Math.sin(time * 0.3) * 0.5;
+  walker2.position.z = -20 + Math.sin(time * 0.3 + 1) * 0.5;
+  
+  // 第一人称移动
+  if (controls.isLocked) {
+    velocity.x -= velocity.x * 10.0 * delta;
+    velocity.z -= velocity.z * 10.0 * delta;
+    direction.z = Number(moveState.forward) - Number(moveState.backward);
+    direction.x = Number(moveState.right) - Number(moveState.left);
+    direction.normalize();
+    const speed = 12;
+    if (moveState.forward || moveState.backward) velocity.z -= direction.z * speed * delta;
+    if (moveState.left || moveState.right) velocity.x -= direction.x * speed * delta;
+    controls.moveRight(-velocity.x * delta);
+    controls.moveForward(-velocity.z * delta);
+    if (cam.position.z > 25) cam.position.z = 25;
+    if (cam.position.z < -55) cam.position.z = -55;
+    cam.position.y = 1.75;
+  }
+  
+  composer.render();
+}
+animate();
+
+// 窗口调整
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
