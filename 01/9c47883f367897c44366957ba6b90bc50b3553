@@ -1,0 +1,35 @@
+index.html
+  s_3a79c635e166c0::t_a6e78ecfc16ee3 1-210,218-235,237-288,300-343
+  s_3a79c635e166c0::t_b50119d82b5095 292,294
+  s_3a79c635e166c0::t_d6dc97a604e15d 293,295
+  s_3a79c635e166c0::t_e79f44e2f64829 289-291,296-299
+  s_3a79c635e166c0::t_6af17d7ce0abf4 211-217
+  s_3a79c635e166c0::t_36d7e4cbd90da8 236
+sunflowers-3d/index.html
+  s_3a79c635e166c0::t_ab907987cd1acf 1-27,29-35,37-590
+  s_3a79c635e166c0::t_2de9d04e602ace 28
+  s_3a79c635e166c0::t_fef9835f413a2d 36
+  s_3a79c635e166c0::t_a3b07d6a052eca 591-593
+scream-3d/index.html
+  s_3a79c635e166c0::t_79b3e7fc14812d 28
+  s_3a79c635e166c0::t_b71b167e5dfacf 36
+  s_3a79c635e166c0::t_fff0c6c2ef0f0f 25-27
+  s_3a79c635e166c0::t_ad48832ebc172d 29-31,33-35
+  s_3a79c635e166c0::t_77f8154cc33d7a 37-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "019c47883f367897c44366957ba6b90bc50b3553",
+  "prompts": {},
+  "sessions": {
+    "s_3a79c635e166c0": {
+      "agent_id": {
+        "tool": "cursor",
+        "id": "243df7de-e24f-46ed-b8cf-e373cd10ed7b",
+        "model": "grok-4.6"
+      },
+      "human_author": "zhangchunhai <zhangsihai@jtexpress.com>"
+    }
+  }
+}
